@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>專業多幣別即時聯動換算矩陣 - 台灣銀行牌告</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono (專業金融排版) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'Noto Sans TC', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          },
+          colors: {
+            fin: {
+              50: '#f8fafc',
+              100: '#f1f5f9',
+              200: '#e2e8f0',
+              300: '#cbd5e1',
+              400: '#94a3b8',
+              500: '#64748b',
+              600: '#475569',
+              700: '#334155',
+              800: '#1e293b',
+              900: '#0f172a',
+              950: '#020617',
+              accent: '#3b82f6',
+              accentHover: '#2563eb'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* 數值等寬對齊設定，提升金融數值閱讀清晰度 */
+    .num-tabular {
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.01em;
+    }
+    /* 去除 input number 預設上下微調按鈕 */
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button { 
+      -webkit-appearance: none; 
+      margin: 0; 
+    }
+    input[type=number] {
+      -moz-appearance: textfield;
+    }
+    /* 平滑過渡動畫 */
+    .fade-enter {
+      animation: fadeIn 0.25s ease-out forwards;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .spin-active {
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body class="bg-[#f8fafc] text-fin-900 min-h-screen flex flex-col font-sans antialiased selection:bg-fin-900 selection:text-white">
+
+  <!-- 頂部金融導航面板 (高度與字級回復標準舒適尺寸) -->
+  <header class="bg-white border-b border-fin-200 sticky top-0 z-30 shadow-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+      
+      <!-- 標題與品牌識別 -->
+      <div class="flex items-center space-x-2.5">
+        <div class="w-7 h-7 rounded-md bg-fin-900 text-white flex items-center justify-center font-bold text-xs tracking-wider shadow-xs">
+          FX
+        </div>
+        <div>
+          <h1 class="text-sm sm:text-base font-bold text-fin-900 tracking-tight flex items-center gap-1.5">
+            即時多幣別聯動矩陣
+            <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-fin-100 text-fin-600 border border-fin-200/60 uppercase">
+              中間參考價
+            </span>
+          </h1>
+          <p class="text-[11px] text-fin-400 hidden sm:block leading-tight">輸入任意貨幣，全矩陣即時響應換算</p>
+        </div>
+      </div>
+
+      <!-- 右側：資料來源狀態、更新時間與控制項 -->
+      <div class="flex items-center space-x-2">
+        <!-- 狀態標籤 -->
+        <div id="statusBadge" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="statusLabel" class="text-xs">同步中...</span>
+        </div>
+
+        <!-- 重新擷取按鈕 -->
+        <button id="refreshBtn" title="重新擷取台灣銀行最新牌告" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-fin-700 bg-white hover:bg-fin-50 border border-fin-300 transition-colors shadow-xs active:scale-95">
+          <svg id="refreshIcon" class="w-3.5 h-3.5 text-fin-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <span class="hidden md:inline">更新匯率</span>
+        </button>
+
+        <!-- 一鍵全清空按鈕 -->
+        <button id="clearAllBtn" title="清空全部輸入金額" class="px-2.5 py-1.5 rounded-md text-xs font-medium text-rose-600 hover:text-rose-700 bg-rose-50/70 hover:bg-rose-100/70 border border-rose-200 transition-colors shadow-xs active:scale-95">
+          清空
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- 主換算內容容器 (三欄式寬幅自適應) -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex-1 w-full space-y-3.5">
+
+    <!-- 頂部輔助操作條：快速預設金額 & 說明 -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-fin-200/80 shadow-xs">
+      <div class="flex items-center space-x-1.5 text-xs text-fin-500">
+        <svg class="w-4 h-4 text-fin-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span id="lastUpdateInfo">最後載入：讀取中...</span>
+      </div>
+
+      <!-- 快速輸入面額標籤 (適用於當前聚焦的幣別，若無聚焦則套用於 TWD) -->
+      <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5 sm:pb-0">
+        <span id="presetTargetHint" class="text-xs text-fin-500 font-medium mr-1 hidden sm:inline">快速帶入:</span>
+        <button type="button" class="preset-chip text-xs font-mono font-medium px-2.5 py-1 rounded bg-fin-100 hover:bg-fin-200 text-fin-700 transition-colors" data-amt="100">100</button>
+        <button type="button" class="preset-chip text-xs font-mono font-medium px-2.5 py-1 rounded bg-fin-100 hover:bg-fin-200 text-fin-700 transition-colors" data-amt="1000">1,000</button>
+        <button type="button" class="preset-chip text-xs font-mono font-medium px-2.5 py-1 rounded bg-fin-100 hover:bg-fin-200 text-fin-700 transition-colors" data-amt="5000">5,000</button>
+        <button type="button" class="preset-chip text-xs font-mono font-medium px-2.5 py-1 rounded bg-fin-100 hover:bg-fin-200 text-fin-700 transition-colors" data-amt="10000">10,000</button>
+        <button type="button" class="preset-chip text-xs font-mono font-medium px-2.5 py-1 rounded bg-fin-100 hover:bg-fin-200 text-fin-700 transition-colors" data-amt="50000">50,000</button>
+      </div>
+    </div>
+
+    <!-- 10 大核心幣別聯動矩陣網格 (一排 3 個幣別：lg:grid-cols-3) -->
+    <div id="currencyGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-3.5">
+      <!-- 由 JavaScript 動態產生 10 個高品質卡片 -->
+    </div>
+
+    <!-- 底部說明面板與公式原理 -->
+    <section class="bg-white rounded-lg border border-fin-200/80 p-3.5 shadow-xs text-xs text-fin-500 space-y-1.5">
+      <div class="flex items-center justify-between border-b border-fin-100 pb-2">
+        <span class="font-semibold text-fin-700 text-xs sm:text-sm">計算邏輯與注意事項</span>
+        <span class="text-fin-400 font-mono text-[11px]">Hub: TWD 中樞轉換</span>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 leading-relaxed">
+        <div>
+          <span class="font-medium text-fin-800 block mb-0.5">1. 中間參考牌價</span>
+          <p class="text-fin-500">
+            以台灣銀行即時牌告為基準，依序優先取「即期 (買入+賣出)/2」，若無即期則取現金中價。
+          </p>
+        </div>
+        <div>
+          <span class="font-medium text-fin-800 block mb-0.5">2. 輸入防呆與保護</span>
+          <p class="text-fin-500">
+            打字時鎖定當前輸入游標，貼上時自動清除貨幣符號（如 $、¥、逗號）並限制為正數。
+          </p>
+        </div>
+        <div>
+          <span class="font-medium text-fin-800 block mb-0.5">3. 本地儲存 (localStorage)</span>
+          <p class="text-fin-500">
+            自動存留最後一次抓取的牌告數值與計算結果，重新開啟網頁時即時還原，支援離線使用。
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 簡潔頁尾 -->
+  <footer class="border-t border-fin-200 bg-white py-3 mt-auto">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between text-xs text-fin-400 gap-1.5">
+      <div>資料來源：台灣銀行牌告匯率 (Bank of Taiwan) • 本工具牌價僅供參考</div>
+      <div class="font-mono text-[11px]">System Ready • Offline Persistent</div>
+    </div>
+  </footer>
+
+  <!-- 自訂輕量 Toast 容器 (取代原生 alert) -->
+  <div id="toastBox" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- JavaScript 核心驅動腳本 -->
+  <script>
+    /**
+     * 10 大常駐幣別規格定義
+     * 已依需求完成位置對調：
+     * - AUD 澳幣 與 KRW 韓元 對調
+     * - SGD 新幣 與 HKD 港幣 對調
+     */
+    const CURRENCY_LIST = [
+      { code: 'TWD', name: '新台幣', symbol: 'NT$', flag: '🇹🇼', decimals: 0, isBase: true },
+      { code: 'USD', name: '美元', symbol: '$', flag: '🇺🇸', decimals: 2 },
+      { code: 'JPY', name: '日圓', symbol: '¥', flag: '🇯🇵', decimals: 0 },
+      { code: 'EUR', name: '歐元', symbol: '€', flag: '🇪🇺', decimals: 2 },
+      { code: 'SGD', name: '新加坡幣', symbol: 'S$', flag: '🇸🇬', decimals: 2 },
+      { code: 'AUD', name: '澳幣', symbol: 'A$', flag: '🇦🇺', decimals: 2 },
+      { code: 'CNY', name: '人民幣', symbol: '¥', flag: '🇨🇳', decimals: 2 },
+      { code: 'HKD', name: '港幣', symbol: 'HK$', flag: '🇭🇰', decimals: 2 },
+      { code: 'KRW', name: '韓元', symbol: '₩', flag: '🇰🇷', decimals: 0 },
+      { code: 'CAD', name: '加拿大幣', symbol: 'C$', flag: '🇨🇦', decimals: 2 }
+    ];
+
+    /**
+     * 預設基準牌價 (1 單位外幣等值多少 TWD)
+     * 當完全離線或無網路時作為安全兜底
+     */
+    const DEFAULT_MID_RATES = {
+      'TWD': 1.0,
+      'USD': 32.55,
+      'JPY': 0.2152,
+      'EUR': 35.42,
+      'HKD': 4.175,
+      'KRW': 0.0241,
+      'CNY': 4.542,
+      'SGD': 24.68,
+      'AUD': 21.45,
+      'CAD': 23.88
+    };
+
+    // 本地快取金鑰
+    const STORAGE_KEY_RATES = 'bot_fx_rates_cache_v2';
+    const STORAGE_KEY_SESSION = 'bot_fx_last_session_v2';
+
+    // 全域狀態
+    let midRates = { ...DEFAULT_MID_RATES };
+    let activeInputCode = 'TWD'; // 當前焦點欄位
+    let lastFetchedDate = null;
+    let rateSourceStatus = 'default'; // 'bot' | 'cache' | 'fallback'
+
+    // DOM 元素快取
+    const gridContainer = document.getElementById('currencyGrid');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const refreshIcon = document.getElementById('refreshIcon');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const statusBadge = document.getElementById('statusBadge');
+    const statusLabel = document.getElementById('statusLabel');
+    const lastUpdateInfo = document.getElementById('lastUpdateInfo');
+    const toastBox = document.getElementById('toastBox');
+    const presetChips = document.querySelectorAll('.preset-chip');
+
+    /**
+     * 彈出輕量 Toast 通知
+     */
+    function showToast(msg, type = 'info') {
+      const toast = document.createElement('div');
+      const styles = {
+        info: 'bg-fin-900 text-white',
+        success: 'bg-emerald-700 text-white',
+        warning: 'bg-amber-600 text-white',
+        error: 'bg-rose-700 text-white'
+      };
+      toast.className = `${styles[type] || styles.info} px-3.5 py-2 rounded-lg shadow-lg text-xs font-medium tracking-tight transform transition-all duration-200 translate-y-2 opacity-0 pointer-events-auto flex items-center gap-1.5`;
+      toast.textContent = msg;
+
+      toastBox.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 250);
+      }, 2600);
+    }
+
+    /**
+     * 產生 10 大幣別的 DOM 卡片 (3 欄式設計，字級回復清晰大字，金額欄位精準收斂)
+     */
+    function renderCurrencyGrid() {
+      gridContainer.innerHTML = '';
+
+      CURRENCY_LIST.forEach(item => {
+        const card = document.createElement('div');
+        card.id = `card-${item.code}`;
+        card.className = 'currency-card bg-white rounded-xl border border-fin-200/90 p-3 sm:p-3.5 shadow-xs transition-all flex flex-col justify-between gap-2.5 relative';
+
+        // 匯率副標題
+        const rateText = item.code === 'TWD' 
+          ? '基準錨定貨幣' 
+          : `1 ${item.code} ≈ ${(midRates[item.code] || 1).toFixed(4)} TWD`;
+
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex items-center space-x-2.5">
+              <span class="text-2xl select-none" role="img" aria-label="${item.name}">${item.flag}</span>
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <span class="font-bold text-sm sm:text-base text-fin-900 tracking-tight">${item.code}</span>
+                  <span class="text-xs sm:text-sm text-fin-500 font-medium">${item.name}</span>
+                </div>
+                <div id="rate-tag-${item.code}" class="text-xs text-fin-400 font-mono mt-0.5">
+                  ${rateText}
+                </div>
+              </div>
+            </div>
+
+            <!-- 右側：基準來源專屬動態標記與複製按鈕 -->
+            <div class="flex items-center gap-1 shrink-0">
+              <span id="source-badge-${item.code}" class="source-badge hidden text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-600 text-white shadow-xs items-center gap-1 tracking-tight select-none">
+                <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                基準來源
+              </span>
+              <button 
+                type="button" 
+                class="copy-btn text-fin-300 hover:text-fin-700 p-1.5 rounded transition-colors" 
+                data-code="${item.code}"
+                title="複製 ${item.code} 金額"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- 金額輸入框區塊 (字體回復 text-xl~text-2xl，3欄佈局下寬度俐落緊湊) -->
+          <div class="relative flex items-center">
+            <span class="absolute left-3 text-fin-400 font-mono text-sm pointer-events-none select-none">
+              ${item.symbol}
+            </span>
+            <input 
+              type="text" 
+              id="input-${item.code}" 
+              data-code="${item.code}"
+              data-decimals="${item.decimals}"
+              inputmode="decimal" 
+              placeholder="0"
+              class="currency-input w-full bg-fin-50/70 focus:bg-white text-fin-900 font-mono text-xl sm:text-2xl font-bold pl-8 pr-3 py-1.5 sm:py-2 rounded-lg border border-fin-200 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition-all num-tabular text-right shadow-inner/10"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+        `;
+
+        gridContainer.appendChild(card);
+      });
+
+      attachInputListeners();
+      updateSourceCardStyles(activeInputCode);
+    }
+
+    /**
+     * 綁定所有輸入框的監聽事件 (輸入防呆、游標鎖定、貼上淨化)
+     */
+    function attachInputListeners() {
+      const inputs = document.querySelectorAll('.currency-input');
+
+      inputs.forEach(input => {
+        const code = input.dataset.code;
+
+        // 1. 取得焦點時：標記為基準來源，套用醒目對比外觀，並去除千分位逗號以方便直接編輯
+        input.addEventListener('focus', () => {
+          activeInputCode = code;
+          updateSourceCardStyles(code);
+
+          // 移除逗號，便於順暢退格與編輯
+          const raw = input.value.replace(/,/g, '').trim();
+          if (raw !== '') {
+            input.value = raw;
+          }
+        });
+
+        // 2. 失去焦點時：保持「基準來源」的標記與色差！僅對數值重新套用千分位格式化
+        input.addEventListener('blur', () => {
+          const raw = input.value.replace(/,/g, '').trim();
+          if (raw !== '' && !isNaN(parseFloat(raw))) {
+            const dec = parseInt(input.dataset.decimals, 10);
+            input.value = formatNumber(parseFloat(raw), dec);
+          }
+        });
+
+        // 3. 輸入事件 (核心聯動)
+        input.addEventListener('input', (e) => {
+          activeInputCode = code;
+          updateSourceCardStyles(code);
+          
+          // 防呆清洗：僅保留數字與最多一個小數點
+          let val = input.value;
+          val = sanitizeNumberInput(val);
+          input.value = val; // 保持游標在當前位置，不插入逗號
+
+          if (val === '') {
+            // 清空所有其他欄位
+            clearAllInputsExcept(code);
+            saveSessionState(code, '');
+            return;
+          }
+
+          const parsedNum = parseFloat(val);
+          if (isNaN(parsedNum)) return;
+
+          // 觸發全矩陣聯動運算
+          dispatchMatrixConversion(code, parsedNum);
+          saveSessionState(code, val);
+        });
+
+        // 4. 貼上防呆清洗 (Strip $、¥、逗號、文字)
+        input.addEventListener('paste', (e) => {
+          e.preventDefault();
+          const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+          const cleaned = sanitizePastedText(pastedText);
+
+          // 將清洗後的文字寫入
+          document.execCommand('insertText', false, cleaned);
+        });
+      });
+
+      // 複製按鈕監聽
+      document.querySelectorAll('.copy-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const code = btn.dataset.code;
+          const targetInput = document.getElementById(`input-${code}`);
+          const copyVal = targetInput ? targetInput.value.replace(/,/g, '').trim() : '';
+
+          if (!copyVal || copyVal === '0') {
+            showToast(`請先輸入或換算金額`, 'warning');
+            return;
+          }
+
+          copyToClipboard(copyVal);
+          showToast(`已複製 ${code} 金額: ${copyVal}`, 'success');
+        });
+      });
+    }
+
+    /**
+     * 核心換算派發函數 (Hub-and-Spoke via TWD)
+     */
+    function dispatchMatrixConversion(sourceCode, sourceAmount) {
+      // 1. 將來源幣別轉換為基準 TWD
+      const sourceMidRate = midRates[sourceCode] || 1;
+      let baseTwdAmount = 0;
+
+      if (sourceCode === 'TWD') {
+        baseTwdAmount = sourceAmount;
+      } else {
+        baseTwdAmount = sourceAmount * sourceMidRate;
+      }
+
+      // 2. 廣播更新其他 9 個幣別
+      CURRENCY_LIST.forEach(item => {
+        if (item.code === sourceCode) {
+          // 重要：絕對不重新賦值給正在輸入的欄位，防止游標跳動
+          return;
+        }
+
+        const targetInput = document.getElementById(`input-${item.code}`);
+        if (!targetInput) return;
+
+        let targetVal = 0;
+        if (item.code === 'TWD') {
+          targetVal = baseTwdAmount;
+        } else {
+          const targetMidRate = midRates[item.code] || 1;
+          targetVal = baseTwdAmount / targetMidRate;
+        }
+
+        // 格式化顯示 (帶有千分位逗號與指定小數位)
+        targetInput.value = formatNumber(targetVal, item.decimals);
+      });
+    }
+
+    /**
+     * 輸入字串清洗（僅保留數字與一個小數點）
+     */
+    function sanitizeNumberInput(str) {
+      // 移除負號、英文字母與非數字
+      let cleaned = str.replace(/[^0-9.]/g, '');
+      // 確保只允許第一個小數點
+      const parts = cleaned.split('.');
+      if (parts.length > 2) {
+        cleaned = parts[0] + '.' + parts.slice(1).join('');
+      }
+      return cleaned;
+    }
+
+    /**
+     * 貼上文字清洗 (例如 "$1,250.50 TWD" -> "1250.50")
+     */
+    function sanitizePastedText(str) {
+      if (!str) return '';
+      // 移除幣別代號、符號、空白、逗號
+      let cleaned = str.replace(/[$€¥£₩฿,\sA-Za-z]/g, '');
+      cleaned = sanitizeNumberInput(cleaned);
+      return cleaned;
+    }
+
+    /**
+     * 金額格式化工具 (支援小數位數與千分位)
+     */
+    function formatNumber(num, decimals) {
+      if (isNaN(num)) return '0';
+      return new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      }).format(num);
+    }
+
+    /**
+     * 清除其餘輸入欄位
+     */
+    function clearAllInputsExcept(exceptCode = null) {
+      CURRENCY_LIST.forEach(item => {
+        if (item.code === exceptCode) return;
+        const input = document.getElementById(`input-${item.code}`);
+        if (input) input.value = '';
+      });
+    }
+
+    /**
+     * 更新基準來源幣別的高辨識度樣式
+     * (高對比度藍色邊框、光暈 ring、底色微調、醒目標記；即使失焦也持續保留)
+     */
+    function updateSourceCardStyles(sourceCode) {
+      CURRENCY_LIST.forEach(item => {
+        const card = document.getElementById(`card-${item.code}`);
+        const badge = document.getElementById(`source-badge-${item.code}`);
+        const input = document.getElementById(`input-${item.code}`);
+        if (!card || !badge || !input) return;
+
+        if (item.code === sourceCode) {
+          // 基準來源：高階金融藍邊框、細膩淺藍底色、微光暈 ring 與專屬呼吸標記
+          card.className = 'currency-card bg-blue-50/50 rounded-xl border-2 border-blue-600 shadow-xs ring-1 ring-blue-500/20 p-3 sm:p-3.5 transition-all flex flex-col justify-between gap-2.5 relative';
+          badge.classList.remove('hidden');
+          badge.classList.add('inline-flex');
+          input.classList.remove('bg-fin-50/70', 'border-fin-200');
+          input.classList.add('bg-white', 'border-blue-400', 'shadow-xs');
+        } else {
+          // 連動從屬卡片：沉穩中性風格
+          card.className = 'currency-card bg-white rounded-xl border border-fin-200/90 hover:border-fin-300 shadow-xs p-3 sm:p-3.5 transition-all flex flex-col justify-between gap-2.5 relative';
+          badge.classList.add('hidden');
+          badge.classList.remove('inline-flex');
+          input.classList.add('bg-fin-50/70', 'border-fin-200');
+          input.classList.remove('bg-white', 'border-blue-400', 'shadow-xs');
+        }
+      });
+
+      // 同步更新頂部快速帶入的標籤提示
+      const presetHint = document.getElementById('presetTargetHint');
+      if (presetHint) {
+        presetHint.textContent = `快速帶入 (${sourceCode}):`;
+      }
+    }
+
+    /**
+     * 剪貼簿複製功能 (相容 iframe 安全機制)
+     */
+    function copyToClipboard(text) {
+      const tempArea = document.createElement('textarea');
+      tempArea.value = text;
+      tempArea.style.position = 'fixed';
+      tempArea.style.opacity = '0';
+      document.body.appendChild(tempArea);
+      tempArea.select();
+      try {
+        document.execCommand('copy');
+      } catch (e) {
+        console.warn('複製失敗:', e);
+      }
+      document.body.removeChild(tempArea);
+    }
+
+    /**
+     * 抓取台灣銀行牌告匯率 (BOT CSV)
+     * 透過多層 Proxy 自動重試
+     */
+    async function fetchBankOfTaiwanCSV() {
+      const botUrl = 'https://rate.bot.com.tw/xrt/flcsv/0/day';
+      const proxies = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(botUrl)}`,
+        `https://corsproxy.io/?${encodeURIComponent(botUrl)}`
+      ];
+
+      for (const proxy of proxies) {
+        try {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 6500);
+
+          const res = await fetch(proxy, { signal: ctrl.signal });
+          clearTimeout(timer);
+
+          if (!res.ok) continue;
+          const text = await res.text();
+          if (!text || text.length < 150) continue;
+
+          const parsed = parseBOTCsvRates(text);
+          if (parsed && Object.keys(parsed).length >= 5) {
+            return { rates: parsed, source: 'bot' };
+          }
+        } catch (err) {
+          console.warn('Proxy 連線未成功，嘗試備援:', err.message);
+        }
+      }
+      return null;
+    }
+
+    /**
+     * 解析台銀 CSV 內容
+     * 取中間參考價邏輯：優先 (即期買入+即期賣出)/2，若為 0 則取 (現金買入+現金賣出)/2
+     */
+    function parseBOTCsvRates(csv) {
+      const lines = csv.split(/\r?\n/);
+      const parsed = { 'TWD': 1.0 };
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const cols = line.split(',');
+        if (cols.length < 6) continue;
+
+        const code = cols[0].replace(/"/g, '').trim();
+        if (!CURRENCY_LIST.find(c => c.code === code)) continue;
+
+        const parseVal = (v) => {
+          const num = parseFloat((v || '').replace(/"/g, '').trim());
+          return isNaN(num) ? 0 : num;
+        };
+
+        const cashBuy = parseVal(cols[2]);
+        const cashSell = parseVal(cols[3]);
+        const spotBuy = parseVal(cols[4]);
+        const spotSell = parseVal(cols[5]);
+
+        let mid = 0;
+        // 優先即期買賣平均
+        if (spotBuy > 0 && spotSell > 0) {
+          mid = (spotBuy + spotSell) / 2;
+        } else if (cashBuy > 0 && cashSell > 0) {
+          mid = (cashBuy + cashSell) / 2;
+        } else {
+          mid = spotSell || cashSell || spotBuy || cashBuy || 0;
+        }
+
+        if (mid > 0) {
+          parsed[code] = mid;
+        }
+      }
+      return parsed;
+    }
+
+    /**
+     * 備援：國際開放匯率 API (以 TWD 為基準)
+     */
+    async function fetchOpenRatesFallback() {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 5000);
+        const res = await fetch('https://open.er-api.com/v6/latest/TWD', { signal: ctrl.signal });
+        clearTimeout(timer);
+
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data && data.rates) {
+          const parsed = { 'TWD': 1.0 };
+          CURRENCY_LIST.forEach(item => {
+            if (item.code === 'TWD') return;
+            const rateInForeign = data.rates[item.code];
+            if (rateInForeign && rateInForeign > 0) {
+              parsed[item.code] = 1 / rateInForeign;
+            }
+          });
+          return { rates: parsed, source: 'fallback' };
+        }
+      } catch (e) {
+        console.warn('備援 API 連線失敗:', e.message);
+      }
+      return null;
+    }
+
+    /**
+     * 同步或重新擷取匯率全流程
+     */
+    async function syncRates(isManualTrigger = false) {
+      refreshIcon.classList.add('spin-active');
+      statusLabel.textContent = '擷取台銀牌告中...';
+
+      let result = await fetchBankOfTaiwanCSV();
+
+      if (!result) {
+        result = await fetchOpenRatesFallback();
+      }
+
+      if (result) {
+        midRates = { ...midRates, ...result.rates };
+        rateSourceStatus = result.source;
+        lastFetchedDate = new Date();
+
+        // 存入 localStorage 快取
+        saveRatesToLocalStorage(midRates, lastFetchedDate, rateSourceStatus);
+      } else {
+        // 連網失敗，讀取本地快取或預設
+        const cached = loadRatesFromLocalStorage();
+        if (cached) {
+          midRates = cached.rates;
+          lastFetchedDate = new Date(cached.timestamp);
+          rateSourceStatus = 'cache';
+        } else {
+          midRates = { ...DEFAULT_MID_RATES };
+          lastFetchedDate = new Date();
+          rateSourceStatus = 'default';
+        }
+      }
+
+      refreshIcon.classList.remove('spin-active');
+      updateStatusUI();
+      updateRateSubtitles();
+
+      // 重新觸發一次換算，更新畫面數值
+      const activeInput = document.getElementById(`input-${activeInputCode}`);
+      if (activeInput && activeInput.value.trim() !== '') {
+        const cleanVal = parseFloat(activeInput.value.replace(/,/g, ''));
+        if (!isNaN(cleanVal)) {
+          dispatchMatrixConversion(activeInputCode, cleanVal);
+        }
+      }
+
+      if (isManualTrigger) {
+        const srcText = rateSourceStatus === 'bot' ? '台灣銀行即時牌告' : '備援基準匯率';
+        showToast(`已成功同步最新匯率 (${srcText})`, 'success');
+      }
+    }
+
+    /**
+     * 更新牌價副標題
+     */
+    function updateRateSubtitles() {
+      CURRENCY_LIST.forEach(item => {
+        const tag = document.getElementById(`rate-tag-${item.code}`);
+        if (!tag) return;
+        if (item.code === 'TWD') {
+          tag.textContent = '基準錨定貨幣';
+        } else {
+          const rate = midRates[item.code] || 1;
+          tag.textContent = `1 ${item.code} ≈ ${rate.toFixed(4)} TWD`;
+        }
+      });
+    }
+
+    /**
+     * 更新頂部狀態燈與最後更新時間
+     */
+    function updateStatusUI() {
+      const timeStr = lastFetchedDate ? lastFetchedDate.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--';
+
+      if (rateSourceStatus === 'bot') {
+        statusBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200';
+        statusLabel.textContent = '台灣銀行即時牌告';
+        lastUpdateInfo.textContent = `牌告同步時間：${timeStr} (台銀官方中價)`;
+      } else if (rateSourceStatus === 'cache') {
+        statusBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200';
+        statusLabel.textContent = '本地快取紀錄 (離線)';
+        lastUpdateInfo.textContent = `離線快取於：${timeStr}`;
+      } else {
+        statusBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200';
+        statusLabel.textContent = '基準參考匯率';
+        lastUpdateInfo.textContent = `網路連線受限，已套用內建基準匯率`;
+      }
+    }
+
+    /**
+     * localStorage 存取管理
+     */
+    function saveRatesToLocalStorage(rates, date, source) {
+      try {
+        const payload = {
+          rates,
+          timestamp: date.toISOString(),
+          source
+        };
+        localStorage.setItem(STORAGE_KEY_RATES, JSON.stringify(payload));
+      } catch (e) {
+        console.warn('localStorage 寫入失敗', e);
+      }
+    }
+
+    function loadRatesFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_RATES);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function saveSessionState(currencyCode, value) {
+      try {
+        const session = { currencyCode, value };
+        localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(session));
+      } catch (e) {
+        console.warn('Session 儲存失敗', e);
+      }
+    }
+
+    function restoreSessionState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_SESSION);
+        if (!raw) {
+          // 預設第一次打開填入 TWD 10,000
+          applyInitialValue('TWD', '10000');
+          return;
+        }
+        const session = JSON.parse(raw);
+        if (session && session.currencyCode && session.value) {
+          applyInitialValue(session.currencyCode, session.value);
+        } else {
+          applyInitialValue('TWD', '10000');
+        }
+      } catch (e) {
+        applyInitialValue('TWD', '10000');
+      }
+    }
+
+    function applyInitialValue(currencyCode, valStr) {
+      activeInputCode = currencyCode;
+      updateSourceCardStyles(currencyCode);
+      const targetInput = document.getElementById(`input-${currencyCode}`);
+      if (!targetInput) return;
+
+      const cleanNum = parseFloat(valStr.replace(/,/g, ''));
+      if (isNaN(cleanNum)) return;
+
+      const dec = parseInt(targetInput.dataset.decimals, 10);
+      targetInput.value = formatNumber(cleanNum, dec);
+      dispatchMatrixConversion(currencyCode, cleanNum);
+    }
+
+    /**
+     * 綁定全局頂部按鈕事件
+     */
+    function initGlobalEvents() {
+      // 重新整理匯率按鈕
+      refreshBtn.addEventListener('click', () => {
+        syncRates(true);
+      });
+
+      // 全清空按鈕
+      clearAllBtn.addEventListener('click', () => {
+        clearAllInputsExcept(null);
+        saveSessionState(activeInputCode, '');
+        showToast('已清空所有金額', 'info');
+      });
+
+      // 快速帶入金額標籤 (套用於當前聚焦的幣別)
+      presetChips.forEach(chip => {
+        chip.addEventListener('click', () => {
+          const amt = chip.dataset.amt;
+          const targetInput = document.getElementById(`input-${activeInputCode}`) || document.getElementById('input-TWD');
+          if (targetInput) {
+            const dec = parseInt(targetInput.dataset.decimals, 10);
+            targetInput.value = formatNumber(parseFloat(amt), dec);
+            dispatchMatrixConversion(activeInputCode, parseFloat(amt));
+            saveSessionState(activeInputCode, amt);
+            showToast(`已套用 ${amt} 到 ${activeInputCode}`, 'info');
+          }
+        });
+      });
+    }
+
+    // 應用程式初始化進入點
+    window.addEventListener('DOMContentLoaded', async () => {
+      // 1. 先讀取本地歷史快取匯率（讓畫面秒開不卡頓）
+      const cached = loadRatesFromLocalStorage();
+      if (cached) {
+        midRates = { ...DEFAULT_MID_RATES, ...cached.rates };
+        lastFetchedDate = new Date(cached.timestamp);
+        rateSourceStatus = 'cache';
+      }
+
+      // 2. 渲染 UI 網格與綁定事件
+      renderCurrencyGrid();
+      initGlobalEvents();
+      updateStatusUI();
+
+      // 3. 還原使用者最後一次的計算狀態
+      restoreSessionState();
+
+      // 4. 背景非同步向台灣銀行更新最新牌告
+      await syncRates(false);
+    });
+  </script>
+</body>
+</html>
